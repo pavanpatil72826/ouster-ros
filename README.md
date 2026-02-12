@@ -1,3 +1,122 @@
+
+## Additions Made to Original Driver
+
+The following custom enhancements have been added to the original Ouster driver:
+
+### Dual Lidar Support (`dual_lidar.launch.py`)
+A new launch file for managing multiple Ouster sensors simultaneously with independent configurations:
+
+- **Multi-Sensor Management**: Support for 2+ Ouster sensors with separate namespaces
+- **Independent Configuration**: Each sensor has unique hostname, ports, and frame IDs
+  - Example: `drwig_TOP_licam` (169.168.168.121:7504) and `drwig_FB_licam` (169.168.168.123:7502)
+- **Staggered Startup**: 3-second delays between sensor initialization to prevent network congestion
+- **Automatic TF Publishing**: Static transforms automatically broadcast per sensor
+- **UDP Destination**: Configurable UDP data destination (e.g., 169.168.168.81)
+
+### Enhanced Driver Parameters (`config/driver_params.yaml`)
+Updated configuration file for multi-sensor deployments:
+
+- **Lidar Mode**: 1024 resolution at 10 Hz (Default)
+- **UDP Profile**: RNG19_RFL8_SIG16_NIR16 for full data streams
+- **Processing Mask**: IMU|PCL|SCAN|IMG|RAW|TLM (all data types enabled)
+- **Static TF Broadcasting**: True (transforms per sensor)
+
+### Multi-Sensor Topics and Frames
+Each sensor publishes to namespaced topics:
+- `/<namespace>/imu` - IMU data
+- `/<namespace>/points` - Primary point cloud
+- `/<namespace>/points2` - Secondary return (if dual return enabled)
+- `/<namespace>/image` - Range/intensity images
+- `/<namespace>/scan` - LaserScan messages
+
+See [Dual Lidar Mode](#dual-lidar-mode) section below for detailed usage and configuration.
+
+
+#### Dual Lidar Mode
+
+To connect to multiple Ouster sensors simultaneously and manage them with a single launch file, you can use the `dual_lidar.launch.py` file. This launch configuration supports multiple sensors with independent configurations, including separate hostnames, ports, and frame IDs. See the [Additions Made to Original Driver](#additions-made-to-original-driver) section at the top of this README for a quick overview, or continue reading for detailed configuration instructions.
+
+**Usage:**
+```bash
+ros2 launch ouster_ros dual_lidar.launch.py
+```
+
+**Typical Configuration Example:**
+In `dual_lidar.launch.py`:
+```python
+lidar_configs = [
+    {
+        'ns': 'drwig_TOP_licam',           # Namespace for TOP sensor
+        'hostname': '169.168.168.121',     # TOP sensor IP
+        'lidar_port': 7504,                # TOP lidar port
+        'imu_port': 7505,                  # TOP IMU port
+        'suffix': '128'                    # Resolution suffix
+    },
+    {
+        'ns': 'drwig_FB_licam',            # Namespace for FRONT-BACK sensor
+        'hostname': '169.168.168.123',     # FB sensor IP
+        'lidar_port': 7502,                # FB lidar port
+        'imu_port': 7503,                  # FB IMU port
+        'suffix': '128'                    # Resolution suffix
+    }
+]
+```
+
+**Key Parameters in dual_lidar.launch.py:**
+- `udp_dest`: Destination IP for UDP data (required: e.g., `169.168.168.81`)
+- `auto_start`: Automatically starts the sensor driver lifecycle
+- `sensor_frame`: Custom frame ID for the sensor (e.g., `drwig_TOP_licam`)
+- `lidar_frame`: Frame ID for lidar data (e.g., `drwig_TOP_licam_lidar`)
+- `imu_frame`: Frame ID for IMU data (e.g., `drwig_TOP_licam_imu`)
+
+**Key Parameters in driver_params.yaml for Dual Setup:**
+```yaml
+ouster/os_driver:
+  ros__parameters:
+    lidar_mode: '1024x10'                          # Resolution: 1024 at 10 Hz
+    timestamp_mode: ''                             # Timestamp mode
+    udp_profile_lidar: 'RNG19_RFL8_SIG16_NIR16'   # Lidar packet profile
+    proc_mask: 'IMU|PCL|SCAN|IMG|RAW|TLM'         # Enable all data types
+    pub_static_tf: true                            # Publish TF transforms per sensor
+```
+
+**Published Topics (Multiple Sensors):**
+For each configured sensor with namespace `<ns>`:
+- `/<ns>/imu` - IMU data (accelerometer, gyroscope)
+- `/<ns>/points` - Point cloud (primary return)
+- `/<ns>/points2` - Point cloud (secondary return, if dual return enabled)
+- `/<ns>/image` - Range/intensity image
+- `/<ns>/metadata` - Sensor metadata
+- `/<ns>/scan` - LaserScan message
+
+**TF Frames:**
+Static transforms are automatically published between:
+- Base frame (e.g., `imu_link`) → Sensor frame (e.g., `drwig_TOP_licam`)
+- Sensor frame → Lidar frame (e.g., `drwig_TOP_licam_lidar`)
+- Sensor frame → IMU frame (e.g., `drwig_TOP_licam_imu`)
+
+**Staggered Startup:**
+The launch file staggers the startup of each sensor (3 seconds between each) to:
+- Prevent UDP port conflicts
+- Reduce network congestion during initialization
+- Allow sequential metadata loading
+- Enable better resource management
+
+**Recording with Dual Lidar:**
+To record data from both sensors into a single rosbag:
+```bash
+ros2 bag record /<ns1>/imu /<ns1>/points /<ns2>/imu /<ns2>/points
+```
+
+**Troubleshooting Dual Lidar Setup:**
+1. **Port Conflicts**: Ensure each sensor has unique lidar_port and imu_port values
+2. **Network Drops**: Verify `udp_dest` IP is reachable from the host machine
+3. **TF Errors**: Check that each sensor has unique frame_id values
+4. **Timing Issues**: Stagger period can be adjusted in `dual_lidar.launch.py` if needed
+
+
+
+---
 # Official ROS driver for Ouster sensors
 
 [ROS1 (melodic/noetic)](https://github.com/ouster-lidar/ouster-ros/tree/master) |
@@ -23,6 +142,7 @@
   - [Usage](#usage)
     - [Launching Nodes](#launching-nodes)
       - [Sensor Mode](#sensor-mode)
+      - [Dual Lidar Mode](#dual-lidar-mode)
       - [Recording Mode](#recording-mode)
       - [Replay Mode](#replay-mode)
         - [PCAP Replay Mode](#pcap-replay-mode)
